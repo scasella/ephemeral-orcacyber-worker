@@ -60,7 +60,8 @@ def ensure_server(job):
                '-ngl', '99', '-ngld', '99', '-np', '1', '-c', '16384',
                '--host', '127.0.0.1', '--port', '8080', '--alias', 'orca-cyber',
                '--jinja', '--chat-template-file', os.environ.get('ORCA_CHAT_TEMPLATE', '/tmp/orca-chat-template.jinja'),
-               '--chat-template-kwargs', '{"enable_thinking":false}', '--reasoning', 'off',
+               '--chat-template-kwargs', '{"enable_thinking":true,"reasoning_effort":"xhigh"}', '--reasoning', 'on',
+               '--reasoning-format', 'deepseek',
                '--temp', '0.6', '--top-p', '0.95', '--top-k', '20', '--no-webui']
     environment = {k: v for k, v in os.environ.items() if k not in ('HF_TOKEN', 'RUNPOD_API_KEY')}
     log_path = ROOT / 'server.log'
@@ -83,13 +84,17 @@ def handler(job):
     body = job.get('input')
     if not isinstance(body, dict) or body.get('model') != 'orca-cyber' or not isinstance(body.get('messages'), list):
         raise ValueError('Expected an OrcaCyber chat completion request')
-    maximum = body.get('max_tokens', 2048)
+    maximum = body.get('max_tokens', 4096)
     if not isinstance(maximum, int) or not 1 <= maximum <= 4096:
         raise ValueError('max_tokens must be between 1 and 4096')
+    effort = body.get('reasoning_effort', 'xhigh')
+    if effort not in ('none', 'low', 'medium', 'xhigh'):
+        raise ValueError('Unsupported reasoning effort')
     ensure_server(job)
     request = {k: v for k, v in body.items() if k in ('model', 'messages', 'tools', 'tool_choice', 'temperature', 'top_p', 'max_tokens')}
     streaming = body.get('stream') is True
-    request.update(stream=streaming, cache_prompt=True, chat_template_kwargs={'enable_thinking': False})
+    request.update(stream=streaming, cache_prompt=True, reasoning_effort=effort, reasoning_format='deepseek',
+                   chat_template_kwargs={'enable_thinking': effort != 'none', 'reasoning_effort': effort if effort != 'none' else 'xhigh'})
     if streaming:
         request['stream_options'] = {'include_usage': True}
     with requests.post('http://127.0.0.1:8080/v1/chat/completions', json=request,
