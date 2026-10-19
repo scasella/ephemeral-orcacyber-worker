@@ -93,7 +93,7 @@ def handler(job):
     ensure_server(job)
     request = {k: v for k, v in body.items() if k in ('model', 'messages', 'tools', 'tool_choice', 'temperature', 'top_p', 'max_tokens')}
     streaming = body.get('stream') is True
-    request.update(stream=streaming, cache_prompt=True, reasoning_effort=effort, reasoning_format='deepseek',
+    request.update(stream=streaming, max_tokens=maximum, cache_prompt=True, reasoning_effort=effort, reasoning_format='deepseek',
                    chat_template_kwargs={'enable_thinking': effort != 'none', 'reasoning_effort': effort if effort != 'none' else 'xhigh'})
     if streaming:
         request['stream_options'] = {'include_usage': True}
