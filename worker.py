@@ -102,18 +102,29 @@ def handler(job):
             yield {'chat': response.json(), 'backend': backend}
             return
         sequence = 0
+        pending = []
+        last_flush = time.monotonic()
         for line in response.iter_lines(chunk_size=1):
             if not line.startswith(b'data: '):
                 continue
             payload = line[6:]
             if payload == b'[DONE]':
+                if pending:
+                    yield {'seq': sequence, 'chunks': pending}
+                    sequence += 1
                 yield {'seq': sequence, 'done': True, 'backend': backend}
                 return
             chunk = json.loads(payload)
             if 'error' in chunk:
                 raise RuntimeError('Inference stream failed')
-            yield {'seq': sequence, 'chunk': chunk}
-            sequence += 1
+            pending.append(chunk)
+            # The SDK POSTs each yield synchronously. Batch tiny deltas so a
+            # network round trip per token cannot throttle GPU throughput.
+            if sequence == 0 or len(pending) >= 32 or time.monotonic() - last_flush >= 0.05:
+                yield {'seq': sequence, 'chunks': pending}
+                sequence += 1
+                pending = []
+                last_flush = time.monotonic()
         raise RuntimeError('Inference stream ended before completion')
 
 
