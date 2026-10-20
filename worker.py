@@ -16,6 +16,8 @@ MODEL_CACHE = Path(os.environ.get('ORCA_MODEL_CACHE', '/runpod-volume/huggingfac
 REVISION = 'fe6ba411d0941f61643b6406614875b292982142'
 MODEL = 'OrcaCyber-Nano-1.0-AI-Defense-Mix-15.7G.gguf'
 DRAFT = 'OrcaCyber-Nano-1.0-AI-Defense-DFlash2-Q8_0.gguf'
+CONTEXT_WINDOW = 131072
+KV_CACHE_TYPE = 'q8_0'
 process = None
 
 
@@ -57,7 +59,10 @@ def ensure_server(job):
     runpod.serverless.progress_update(job, 'Loading OrcaCyber and DFlash2 on CUDA')
     command = ['/app/llama-server', '-m', str(target), '-md', str(draft),
                '--spec-type', 'draft-dflash', '--spec-draft-n-max', '5',
-               '-ngl', '99', '-ngld', '99', '-np', '1', '-c', '16384',
+               '-ngl', '99', '-ngld', '99', '-np', '1', '-c', str(CONTEXT_WINDOW),
+               '--cache-type-k', KV_CACHE_TYPE, '--cache-type-v', KV_CACHE_TYPE,
+               '--cache-type-k-draft', KV_CACHE_TYPE, '--cache-type-v-draft', KV_CACHE_TYPE,
+               '--flash-attn', 'on', '--fit', 'off', '--no-context-shift',
                '--host', '127.0.0.1', '--port', '8080', '--alias', 'orca-cyber',
                '--jinja', '--chat-template-file', os.environ.get('ORCA_CHAT_TEMPLATE', '/tmp/orca-chat-template.jinja'),
                '--chat-template-kwargs', '{"enable_thinking":true,"reasoning_effort":"xhigh"}', '--reasoning', 'on',
@@ -102,7 +107,7 @@ def handler(job):
         if not response.ok:
             raise RuntimeError(f'Inference returned HTTP {response.status_code}')
         gpu = subprocess.check_output(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'], text=True).strip()
-        backend = {'gpu': gpu, 'speculation': 'draft-dflash', 'revision': REVISION}
+        backend = {'gpu': gpu, 'speculation': 'draft-dflash', 'revision': REVISION, 'contextWindow': CONTEXT_WINDOW, 'kvCacheType': KV_CACHE_TYPE}
         if not streaming:
             yield {'chat': response.json(), 'backend': backend}
             return
